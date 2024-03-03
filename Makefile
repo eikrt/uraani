@@ -1,8 +1,8 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99
-LDFLAGS = -lSDL2 -llua
+LDFLAGS = -lSDL2 -llua -lncurses
 
-SRCS = main.c
+SRCS = main.c sound.c image.c config.c
 OBJS = $(SRCS:.c=.o)
 	EXEC = game_engine
 
