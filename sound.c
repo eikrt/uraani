@@ -10,8 +10,6 @@ void *playSound(void *filename) {
         const char *expr = "((loop true) (notes 60 61 62))"; 
         int index = 0;
         Node *root = parseSExpression(expr, &index);
-        printSExpression(root);
-        printf("\n");
         freeNodes(root);
         SDL_Init(SDL_INIT_AUDIO);
         SDL_AudioSpec wavSpec;

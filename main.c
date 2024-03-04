@@ -6,14 +6,37 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include "core.h"
 #include "image.h"
 #include "sound.h"
 
+typedef struct GameArgs {
+        Node* nodes;
+        int nodes_size;
+} GameArgs;
+Node newNode(char* name) {
+        Node n = {
+            0,
+            0,
+            0,
+            0,
+            randI(),
+            name,
+            NULL,
+
+        };
+        return n;
+}
 SDL_Window *window;
 SDL_Renderer *renderer;
 int running = 1;
-
+int randI() {
+        int random_number;
+        srand(time(NULL));
+        random_number = rand();
+        return random_number;
+}
 lua_State *loadLuaScript(const char *filename) {
         lua_State *L = luaL_newstate();
         luaL_openlibs(L);
@@ -30,7 +53,12 @@ lua_State *loadLuaScript(const char *filename) {
         }
         return L;
 }
-void pushEntityToLua(lua_State *L, Entity entity) {
+void openVim(const char* filename) {
+    char command[100];
+    snprintf(command, sizeof(command), "vim project/scripts/%s.lua", filename);
+    system(command);
+}
+void pushNodeToLua(lua_State *L, Node entity) {
         lua_newtable(L);
         lua_pushinteger(L, entity.x);
         lua_setfield(L, -2, "x");
@@ -41,7 +69,7 @@ void pushEntityToLua(lua_State *L, Entity entity) {
         lua_pushinteger(L, entity.height);
         lua_setfield(L, -2, "height");
 }
-void getEntityFromLua(lua_State *L, Entity *entity) {
+void getNodeFromLua(lua_State *L, Node *entity) {
         lua_getglobal(L, "player");
         lua_getfield(L, -1, "x");
         entity->x = lua_tointeger(L, -1);
@@ -56,7 +84,8 @@ void getEntityFromLua(lua_State *L, Entity *entity) {
         entity->height = lua_tointeger(L, -1);
         lua_pop(L, 2);  // Pop
 }
-int tui() {
+void tui(GameArgs *args) {
+
         WINDOW *menu_win;
         int highlight = 1;
         int choice = 0;
@@ -67,78 +96,89 @@ int tui() {
         cbreak();              // Line buffering disabled
         start_color();         // Enable colors if supported
         keypad(stdscr, TRUE);  // Enable keyboard input
-
+        curs_set(0);
         init_pair(1, COLOR_CYAN, COLOR_BLACK);  // Define color pair
-
         // Create a window for the menu
         int maxy = getmaxy(menu_win);
         menu_win = newwin(24, 80, 0, 1);
         box(menu_win, 0, 0);
+        int height, width;
+        getmaxyx(menu_win, height, width);
         refresh();
         wrefresh(menu_win);
-
         // Menu options
         char *choices[] = {"Option 1", "Option 2", "Option 3", "Exit"};
-
-        // Display menu options
-        for (int i = 0; i < 4; i++) {
-                if (highlight == i + 1) {
-                        wattron(menu_win, A_REVERSE);
-                        mvwprintw(menu_win, i + 1, 1, "%s", choices[i]);
-                        wattroff(menu_win, A_REVERSE);
-                } else {
-                        mvwprintw(menu_win, i + 1, 1, "%s", choices[i]);
-                }
-        }
         wrefresh(menu_win);
         while (true) {
+                for (int y = 0; y < height - 2; y++) {
+                    mvaddch(y + 1, width / 4, ACS_VLINE);
+                }
+                refresh();
+                wrefresh(menu_win);
                 char c = wgetch(menu_win);
                 switch (c) {
                         case 'w':
                                 if (highlight == 1)
-                                        highlight = 4;
+                                        highlight = args->nodes_size;
                                 else
                                         --highlight;
                                 break;
                         case 's':
-                                if (highlight == 4)
+                                if (highlight == args->nodes_size)
                                         highlight = 1;
                                 else
                                         ++highlight;
                                 break;
-                        case 10:
+                        case 'n':
+                                args->nodes_size++;
+                                args->nodes = (Node *)realloc(args->nodes, args->nodes_size * sizeof(Node));
+
+                                char name[32];
+                                echo();
+                                nodelay(menu_win, FALSE);
+                                printw("\nInput ");
+                                refresh();
+                                scanw("%s", name);
+                                nodelay(menu_win, TRUE);
+                                noecho();
+                                args->nodes[args->nodes_size-1] = newNode(name);
+                                refresh();
+                                break;
+                        case 'e':
                                 choice = highlight;
+                                char buffer[100];
+                                snprintf(buffer, sizeof(buffer), "%s", args->nodes[args->nodes_size-1].name);
+                                openVim(buffer); 
+                                endwin();
+                                refresh();
+                                break;
+                        case 'q':
+                                endwin();
+                                return;
                                 break;
                         default:
                                 refresh();
                                 break;
                 }
-                for (int i = 0; i < 4; i++) {
+                for (int i = 0; i < args->nodes_size; i++) {
                         if (highlight == i + 1) {
                                 wattron(menu_win, A_REVERSE);
-                                mvwprintw(menu_win, i + 1, 1, "%s", choices[i]);
+                                mvwprintw(menu_win, i + 1, 1, "%s", args->nodes[i].name);
                                 wattroff(menu_win, A_REVERSE);
 
                         } else {
-                                mvwprintw(menu_win, i + 1, 1, "%s", choices[i]);
+                               mvwprintw(menu_win, i + 1, 1, "%s", args->nodes[i].name);
                         }
-                }
-                wrefresh(menu_win);
-                if (choice != 0) {
-                        mvprintw(22, 2,
-                                 "You chose option %d with choice string %s",
-                                 choice, choices[choice - 1]);
-
-                        refresh();
                 }
         }
         getch();
         endwin();  // End curses mode
 }
-void *game(void* arg) {
+void *game(void* game_args) {
+
+        GameArgs *args = (GameArgs*) game_args;
         if (SDL_Init(SDL_INIT_VIDEO) != 0) {
                 printf("SDL_Init Error: %s\n", SDL_GetError());
-                return 1;
         }
 
         window = SDL_CreateWindow("Uraani", SDL_WINDOWPOS_CENTERED,
@@ -147,7 +187,6 @@ void *game(void* arg) {
         if (window == NULL) {
                 printf("SDL_CreateWindow Error: %s\n", SDL_GetError());
                 SDL_Quit();
-                return 1;
         }
 
         renderer = SDL_CreateRenderer(
@@ -156,12 +195,11 @@ void *game(void* arg) {
                 SDL_DestroyWindow(window);
                 printf("SDL_CreateRenderer Error: %s\n", SDL_GetError());
                 SDL_Quit();
-                return 1;
         }
 
         lua_State *L = loadLuaScript("project/scripts/script.lua");
         SDL_Rect rect = {100, 100, 50, 50};
-        Entity player = {
+        Node player = {
             0,
             0,
             0,
@@ -180,7 +218,6 @@ void *game(void* arg) {
                 SDL_DestroyRenderer(renderer);
                 SDL_DestroyWindow(window);
                 SDL_Quit();
-                return 1;
         }
 
         // Create SDL texture from TGA image data
@@ -253,19 +290,21 @@ void *game(void* arg) {
                 SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
                 SDL_RenderClear(renderer);
 
-                pushEntityToLua(L, player);
+                pushNodeToLua(L, player);
                 lua_setglobal(L, "player");
                 lua_getglobal(L, "update");
                 if (lua_pcall(L, 0, 0, 0) != 0) {
                         printf("Error running Lua script: %s\n",
                                lua_tostring(L, -1));
                 }
-
-                getEntityFromLua(L, &player);
-                rect.x = player.x;
-                rect.y = player.y;
-                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                SDL_RenderFillRect(renderer, &rect);
+                for (int i = 0; i < args->nodes_size; i++) {
+                        Node entity = args->nodes[i];
+                        getNodeFromLua(L, &entity);
+                        rect.x = entity.x;
+                        rect.y = entity.y;
+                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                        SDL_RenderFillRect(renderer, &rect);
+                }
                 // SDL_RenderCopy(renderer, texture, NULL, NULL);
                 SDL_RenderPresent(renderer);
         }
@@ -273,13 +312,20 @@ void *game(void* arg) {
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
         SDL_Quit();
-        return 0;
 }
 int main() {
+
+        int nodes_size = 0;
+        Node *nodes = (Node *)malloc(nodes_size * sizeof(Node));
         pthread_t thread;
-        if (pthread_create(&thread, NULL, game, NULL )!= 0) {
+        GameArgs game_args = {
+                nodes,
+                nodes_size,
+        };
+        if (pthread_create(&thread, NULL, game, (void*)&game_args)!= 0) {
                 fprintf(stderr, "Error: Failed to create thread\n");
                 return 1;
         }
-        tui();
+        tui(nodes);
+        return 1;
 }

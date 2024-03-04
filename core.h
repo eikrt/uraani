@@ -1,9 +1,14 @@
-typedef struct Entity {
+typedef struct Node Node;
+
+struct Node {
     int x;
     int y;
     int width;
     int height;    
-} Entity;
+    int id;    
+    char* name;
+    Node* children;
+};
 
 typedef struct Tile {
     int x;
