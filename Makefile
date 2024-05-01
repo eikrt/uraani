@@ -1,10 +1,10 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99
-LDFLAGS = -lSDL2 -llua -lncurses
+LDFLAGS = -lSDL2 -lm
 
-SRCS = main.c sound.c image.c config.c
+SRCS = coll.c elem.c mov.c main.c 
 OBJS = $(SRCS:.c=.o)
-	EXEC = game_engine
+	EXEC = breakout 
 
 .PHONY: all clean
 
